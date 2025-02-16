@@ -153,9 +153,9 @@
     <div class="slider-group" id="dotSizeGroup" style="display: none;">
       <div class="slider-label">
         <label for="dotSizeSlider">Dot Base Size:</label>
-        <input type="number" class="custom-input" id="dotSizeValue" min="0.01" max="1" value="0.5" step="0.01">
+        <input type="number" class="custom-input" id="dotSizeValue" min="0.01" max="1" value="0.03" step="0.01">
       </div>
-      <input type="range" class="slider" id="dotSizeSlider" min="0.01" max="1" value="0.2" step="0.01">
+      <input type="range" class="slider" id="dotSizeSlider" min="0.01" max="1" value="0.03" step="0.01">
     </div>
   </div>
 
@@ -165,7 +165,7 @@
     // Global Variables
     let scene, camera, renderer, bubble, controls;
     let frequency = 440, amplitude = 0.2, detail = 5, cameraDistance = 5;
-    let dotMode = false, dotBaseSize = 5;
+    let dotMode = false, dotBaseSize = 0.03;
 
     // Shader Code (conditionally compiles DOTS_MODE)
     const vertexShaderCode = `

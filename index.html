@@ -2,7 +2,8 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Prevent zooming on inputs and UI elements -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Resonating Bubble</title>
   <style>
     body {
@@ -17,12 +18,12 @@
     /* Slider Container & Group Styling */
     #sliderContainer {
       position: fixed;
-      top: 10px;
+      top: 5px; /* Reduced top margin */
       width: 100%;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
+      gap: 5px; /* Reduced gap */
       z-index: 10;
       pointer-events: auto;
     }
@@ -32,7 +33,7 @@
       background: rgba(255, 255, 255, 0.1);
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 25px;
-      padding: 10px 15px;
+      padding: 5px 15px; /* Shrunk vertical padding */
       display: flex;
       flex-direction: column;
       gap: 5px;
@@ -55,7 +56,6 @@
       margin-left: 10px;
       text-align: center;
     }
-
     /* Slider Styling */
     .slider {
       -webkit-appearance: none;
@@ -140,13 +140,76 @@
       </div>
       <input type="range" class="slider" id="cameraSlider" min="1" max="20" value="5" step="0.1">
     </div>
+
+    <!-- Display Mode Toggle -->
+    <div class="slider-group">
+      <div class="slider-label">
+        <label for="modeToggle">Dots Mode:</label>
+        <input type="checkbox" id="modeToggle">
+      </div>
+    </div>
+
+    <!-- Dot Base Size Slider Group (only visible in dot mode) -->
+    <div class="slider-group" id="dotSizeGroup" style="display: none;">
+      <div class="slider-label">
+        <label for="dotSizeSlider">Dot Base Size:</label>
+        <input type="number" class="custom-input" id="dotSizeValue" min="1" max="50" value="5" step="0.1">
+      </div>
+      <input type="range" class="slider" id="dotSizeSlider" min="1" max="50" value="5" step="0.1">
+    </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script>
+    // Global Variables
     let scene, camera, renderer, bubble, controls;
     let frequency = 440, amplitude = 0.2, detail = 5, cameraDistance = 5;
+    let dotMode = false, dotBaseSize = 5;
+
+    // Shader Code (conditionally compiles DOTS_MODE)
+    const vertexShaderCode = `
+      uniform float uFrequency;
+      uniform float uAmplitude;
+      #ifdef DOTS_MODE
+      uniform float uDotSize;
+      #endif
+      varying vec3 vNormal;
+      void main() {
+        vec3 pos = position;
+        vec3 norm = normalize(pos);
+        float radial = sin(length(pos) * uFrequency * 0.08);
+        float spherical = sin(dot(pos, vec3(1.0)) * uFrequency * 0.04);
+        float displacement = (radial + spherical) * uAmplitude;
+        pos += norm * displacement;
+        vNormal = normalize(pos);
+        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+        #ifdef DOTS_MODE
+          gl_PointSize = uDotSize * (300.0 / -mvPosition.z);
+        #endif
+      }
+    `;
+
+    const fragmentShaderCode = `
+      #ifdef DOTS_MODE
+      varying vec3 vNormal;
+      void main() {
+        vec2 coord = gl_PointCoord - vec2(0.5);
+        if(length(coord) > 0.5) discard;
+        gl_FragColor = vec4(vec3(0.9), 1.0);
+      }
+      #else
+      varying vec3 vNormal;
+      void main() {
+        vec3 lightDir = normalize(vec3(1.0, 2.0, 1.0));
+        float diff = max(dot(vNormal, lightDir), 0.0);
+        float spec = pow(max(dot(reflect(-lightDir, vNormal), vec3(0.0, 0.0, 1.0)), 0.5), 32.0);
+        vec3 color = vec3(0.9) * (diff * 0.7 + 0.3) + spec * 0.5;
+        gl_FragColor = vec4(color, 1.0);
+      }
+      #endif
+    `;
 
     function init() {
       // Setup scene
@@ -168,23 +231,22 @@
       scene.add(light);
       scene.add(new THREE.AmbientLight(0x404040));
 
-      // OrbitControls for intuitive camera rotation via dragging
+      // OrbitControls for intuitive camera dragging
       controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
 
-      // Resize event
+      // Event listeners
       window.addEventListener('resize', onWindowResize);
 
       // Frequency Controls
       const frequencySlider = document.getElementById('frequencySlider');
       const frequencyValueInput = document.getElementById('frequencyValue');
-
-      frequencySlider.addEventListener('input', function(e) {
+      frequencySlider.addEventListener('input', (e) => {
         frequency = parseFloat(e.target.value);
         frequencyValueInput.value = frequency;
       });
-      frequencyValueInput.addEventListener('change', function(e) {
+      frequencyValueInput.addEventListener('change', (e) => {
         frequency = parseFloat(e.target.value);
         if (frequency < parseFloat(frequencySlider.min)) frequency = parseFloat(frequencySlider.min);
         if (frequency > parseFloat(frequencySlider.max)) frequency = parseFloat(frequencySlider.max);
@@ -195,12 +257,11 @@
       // Amplitude Controls
       const amplitudeSlider = document.getElementById('amplitudeSlider');
       const amplitudeValueInput = document.getElementById('amplitudeValue');
-
-      amplitudeSlider.addEventListener('input', function(e) {
+      amplitudeSlider.addEventListener('input', (e) => {
         amplitude = parseFloat(e.target.value);
         amplitudeValueInput.value = amplitude;
       });
-      amplitudeValueInput.addEventListener('change', function(e) {
+      amplitudeValueInput.addEventListener('change', (e) => {
         amplitude = parseFloat(e.target.value);
         if (amplitude < parseFloat(amplitudeSlider.min)) amplitude = parseFloat(amplitudeSlider.min);
         if (amplitude > parseFloat(amplitudeSlider.max)) amplitude = parseFloat(amplitudeSlider.max);
@@ -211,13 +272,12 @@
       // Detail Controls
       const detailSlider = document.getElementById('detailSlider');
       const detailValueInput = document.getElementById('detailValue');
-
-      detailSlider.addEventListener('input', function(e) {
+      detailSlider.addEventListener('input', (e) => {
         detail = parseInt(e.target.value);
         detailValueInput.value = detail;
         updateBubbleDetail(detail);
       });
-      detailValueInput.addEventListener('change', function(e) {
+      detailValueInput.addEventListener('change', (e) => {
         detail = parseInt(e.target.value);
         if (detail < parseInt(detailSlider.min)) detail = parseInt(detailSlider.min);
         if (detail > parseInt(detailSlider.max)) detail = parseInt(detailSlider.max);
@@ -229,13 +289,12 @@
       // Camera Distance Controls
       const cameraSlider = document.getElementById('cameraSlider');
       const cameraValueInput = document.getElementById('cameraValue');
-
-      cameraSlider.addEventListener('input', function(e) {
+      cameraSlider.addEventListener('input', (e) => {
         cameraDistance = parseFloat(e.target.value);
         cameraValueInput.value = cameraDistance;
         camera.position.z = cameraDistance;
       });
-      cameraValueInput.addEventListener('change', function(e) {
+      cameraValueInput.addEventListener('change', (e) => {
         cameraDistance = parseFloat(e.target.value);
         if (cameraDistance < parseFloat(cameraSlider.min)) cameraDistance = parseFloat(cameraSlider.min);
         if (cameraDistance > parseFloat(cameraSlider.max)) cameraDistance = parseFloat(cameraSlider.max);
@@ -244,48 +303,82 @@
         camera.position.z = cameraDistance;
       });
 
+      // Mode Toggle Controls
+      const modeToggle = document.getElementById('modeToggle');
+      modeToggle.addEventListener('change', (e) => {
+        dotMode = e.target.checked;
+        // Show/hide dot size slider group
+        document.getElementById('dotSizeGroup').style.display = dotMode ? 'flex' : 'none';
+        recreateBubble();
+      });
+
+      // Dot Base Size Controls (only active in dot mode)
+      const dotSizeSlider = document.getElementById('dotSizeSlider');
+      const dotSizeValueInput = document.getElementById('dotSizeValue');
+      dotSizeSlider.addEventListener('input', (e) => {
+        dotBaseSize = parseFloat(e.target.value);
+        dotSizeValueInput.value = dotBaseSize;
+        if (dotMode && bubble && bubble.material.uniforms.uDotSize)
+          bubble.material.uniforms.uDotSize.value = dotBaseSize;
+      });
+      dotSizeValueInput.addEventListener('change', (e) => {
+        dotBaseSize = parseFloat(e.target.value);
+        if (dotBaseSize < parseFloat(dotSizeSlider.min)) dotBaseSize = parseFloat(dotSizeSlider.min);
+        if (dotBaseSize > parseFloat(dotSizeSlider.max)) dotBaseSize = parseFloat(dotSizeSlider.max);
+        dotSizeSlider.value = dotBaseSize;
+        dotSizeValueInput.value = dotBaseSize;
+        if (dotMode && bubble && bubble.material.uniforms.uDotSize)
+          bubble.material.uniforms.uDotSize.value = dotBaseSize;
+      });
+
       animate();
     }
 
+    // Creates the bubble based on current mode and detail
     function createBubble(detailLevel) {
       const geometry = new THREE.IcosahedronGeometry(2, detailLevel);
-      const material = new THREE.ShaderMaterial({
-        wireframe: true,
-        uniforms: {
-          uFrequency: { value: frequency },
-          uAmplitude: { value: amplitude }
-        },
-        vertexShader: `
-          uniform float uFrequency;
-          uniform float uAmplitude;
-          varying vec3 vNormal;
-          void main() {
-            vec3 pos = position;
-            vec3 norm = normalize(pos);
-            float radial = sin(length(pos) * uFrequency * 0.08);
-            float spherical = sin(dot(pos, vec3(1.0)) * uFrequency * 0.04);
-            float displacement = (radial + spherical) * uAmplitude;
-            pos += norm * displacement;
-            vNormal = normalize(pos);
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-          }
-        `,
-        fragmentShader: `
-          varying vec3 vNormal;
-          void main() {
-            vec3 lightDir = normalize(vec3(1.0, 2.0, 1.0));
-            float diff = max(dot(vNormal, lightDir), 0.0);
-            float spec = pow(max(dot(reflect(-lightDir, vNormal), vec3(0.0, 0.0, 1.0)), 0.5), 32.0);
-            vec3 color = vec3(0.9) * (diff * 0.7 + 0.3) + spec * 0.5;
-            gl_FragColor = vec4(color, 1.0);
-          }
-        `
-      });
-      bubble = new THREE.Mesh(geometry, material);
+      let material;
+      if (dotMode) {
+        material = new THREE.ShaderMaterial({
+          defines: { DOTS_MODE: '' },
+          uniforms: {
+            uFrequency: { value: frequency },
+            uAmplitude: { value: amplitude },
+            uDotSize: { value: dotBaseSize }
+          },
+          vertexShader: vertexShaderCode,
+          fragmentShader: fragmentShaderCode,
+          transparent: true
+        });
+        bubble = new THREE.Points(geometry, material);
+      } else {
+        material = new THREE.ShaderMaterial({
+          uniforms: {
+            uFrequency: { value: frequency },
+            uAmplitude: { value: amplitude }
+          },
+          vertexShader: vertexShaderCode,
+          fragmentShader: fragmentShaderCode,
+          wireframe: true
+        });
+        bubble = new THREE.Mesh(geometry, material);
+      }
       scene.add(bubble);
     }
 
+    // Recreates the bubble when switching modes
+    function recreateBubble() {
+      if (bubble) {
+        scene.remove(bubble);
+        bubble.geometry.dispose();
+        bubble.material.dispose();
+      }
+      createBubble(detail);
+    }
+
+    // Updates the bubble's detail by replacing its geometry
     function updateBubbleDetail(detailLevel) {
+      if (!bubble) return;
       const newGeometry = new THREE.IcosahedronGeometry(2, detailLevel);
       bubble.geometry.dispose();
       bubble.geometry = newGeometry;
@@ -299,8 +392,10 @@
 
     function animate() {
       requestAnimationFrame(animate);
-      bubble.material.uniforms.uFrequency.value = frequency;
-      bubble.material.uniforms.uAmplitude.value = amplitude;
+      // Update uniforms continuously
+      if (bubble.material.uniforms.uFrequency) bubble.material.uniforms.uFrequency.value = frequency;
+      if (bubble.material.uniforms.uAmplitude) bubble.material.uniforms.uAmplitude.value = amplitude;
+      if (dotMode && bubble.material.uniforms.uDotSize) bubble.material.uniforms.uDotSize.value = dotBaseSize;
       bubble.rotation.x += 0.002;
       bubble.rotation.y += 0.003;
       controls.update();

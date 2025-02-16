@@ -211,6 +211,26 @@
       #endif
     `;
 
+    // Generates a BufferGeometry with "count" points distributed evenly on a sphere (radius 2)
+    function createDotGeometry(count) {
+      const positions = new Float32Array(count * 3);
+      const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+      const radius = 2;
+      for (let i = 0; i < count; i++) {
+        const y = 1 - (i / (count - 1)) * 2; // from 1 to -1
+        const r = Math.sqrt(1 - y * y);
+        const theta = goldenAngle * i;
+        const x = Math.cos(theta) * r;
+        const z = Math.sin(theta) * r;
+        positions[i * 3]     = x * radius;
+        positions[i * 3 + 1] = y * radius;
+        positions[i * 3 + 2] = z * radius;
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      return geometry;
+    }
+
     function init() {
       // Setup scene
       scene = new THREE.Scene();
@@ -334,11 +354,12 @@
       animate();
     }
 
-    // Creates the bubble based on current mode and detail
+    // Creates the bubble based on current mode and detail.
+    // In dot mode the "detail" number represents the total number of dots.
     function createBubble(detailLevel) {
-      const geometry = new THREE.IcosahedronGeometry(2, detailLevel);
-      let material;
+      let geometry, material;
       if (dotMode) {
+        geometry = createDotGeometry(detailLevel);
         material = new THREE.ShaderMaterial({
           defines: { DOTS_MODE: '' },
           uniforms: {
@@ -352,6 +373,7 @@
         });
         bubble = new THREE.Points(geometry, material);
       } else {
+        geometry = new THREE.IcosahedronGeometry(2, detailLevel);
         material = new THREE.ShaderMaterial({
           uniforms: {
             uFrequency: { value: frequency },
@@ -376,10 +398,16 @@
       createBubble(detail);
     }
 
-    // Updates the bubble's detail by replacing its geometry
+    // Updates the bubble's detail by replacing its geometry.
+    // In dot mode, detail now represents the number of dots.
     function updateBubbleDetail(detailLevel) {
       if (!bubble) return;
-      const newGeometry = new THREE.IcosahedronGeometry(2, detailLevel);
+      let newGeometry;
+      if (dotMode) {
+        newGeometry = createDotGeometry(detailLevel);
+      } else {
+        newGeometry = new THREE.IcosahedronGeometry(2, detailLevel);
+      }
       bubble.geometry.dispose();
       bubble.geometry = newGeometry;
     }

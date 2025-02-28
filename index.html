@@ -1,436 +1,189 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <!-- Prevent zooming on inputs and UI elements -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Resonating Bubble</title>
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background-color: #121212;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
-      color: #fff;
-    }
-    canvas { display: block; }
-
-    /* Slider Container & Group Styling */
-    #sliderContainer {
-      position: fixed;
-      top: 5px; /* Reduced top margin */
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 5px; /* Reduced gap */
-      z-index: 10;
-      pointer-events: auto;
-    }
-    .slider-group {
-      width: 80%;
-      max-width: 400px;
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 25px;
-      padding: 5px 15px; /* Shrunk vertical padding */
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
-    }
-    .slider-label {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 14px;
-    }
-    .custom-input {
-      width: 60px;
-      padding: 2px 4px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      background: #fff;
-      color: #000;
-      font-size: 14px;
-      margin-left: 10px;
-      text-align: center;
-    }
-    /* Slider Styling */
-    .slider {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 100%;
-      height: 30px;
-      background: transparent;
-      margin: 0;
-      padding: 0;
-    }
-    /* Slider Track */
-    .slider::-webkit-slider-runnable-track {
-      width: 100%;
-      height: 8px;
-      background: #555;
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 4px;
-    }
-    .slider::-moz-range-track {
-      width: 100%;
-      height: 8px;
-      background: #555;
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 4px;
-    }
-    /* Slider Thumb */
-    .slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 20px;
-      height: 20px;
-      background: #fff;
-      border-radius: 50%;
-      border: 1px solid #ccc;
-      margin-top: -6px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.5);
-    }
-    .slider::-moz-range-thumb {
-      width: 20px;
-      height: 20px;
-      background: #fff;
-      border-radius: 50%;
-      border: 1px solid #ccc;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.5);
-    }
-  </style>
+    <title>Random Map with AI Pathfinding</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px;
+        }
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+    </style>
 </head>
 <body>
-  <div id="sliderContainer">
-    <!-- Frequency Slider Group -->
-    <div class="slider-group">
-      <div class="slider-label">
-        <label for="frequencySlider">Frequency (Hz):</label>
-        <input type="number" class="custom-input" id="frequencyValue" min="1" max="20000" value="440" step="1">
-      </div>
-      <input type="range" class="slider" id="frequencySlider" min="1" max="20000" value="440" step="1">
-    </div>
+    <button onclick="generateNewMap()">Generate New Map</button>
+    <canvas id="gameCanvas" width="600" height="600"></canvas>
 
-    <!-- Amplitude Slider Group -->
-    <div class="slider-group">
-      <div class="slider-label">
-        <label for="amplitudeSlider">Amplitude:</label>
-        <input type="number" class="custom-input" id="amplitudeValue" min="-1" max="1" value="0.2" step="0.01">
-      </div>
-      <input type="range" class="slider" id="amplitudeSlider" min="-1" max="1" value="0.2" step="0.01">
-    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const tileSize = 30;
+        const gridWidth = canvas.width / tileSize;
+        const gridHeight = canvas.height / tileSize;
 
-    <!-- Detail Slider Group -->
-    <div class="slider-group">
-      <div class="slider-label">
-        <label for="detailSlider">Detail:</label>
-        <input type="number" class="custom-input" id="detailValue" min="1" max="1000" value="5" step="1">
-      </div>
-      <input type="range" class="slider" id="detailSlider" min="1" max="1000" value="5" step="1">
-    </div>
+        let map = [];
+        let player = { x: 1, y: 1 };
+        let target = null;
+        let path = [];
 
-    <!-- Camera Distance Slider Group -->
-    <div class="slider-group">
-      <div class="slider-label">
-        <label for="cameraSlider">Camera Distance:</label>
-        <input type="number" class="custom-input" id="cameraValue" min="1" max="20" value="5" step="0.1">
-      </div>
-      <input type="range" class="slider" id="cameraSlider" min="1" max="20" value="5" step="0.1">
-    </div>
+        // Generate initial map
+        generateNewMap();
 
-    <!-- Display Mode Toggle -->
-    <div class="slider-group">
-      <div class="slider-label">
-        <label for="modeToggle">Dots Mode:</label>
-        <input type="checkbox" id="modeToggle">
-      </div>
-    </div>
+        function generateNewMap() {
+            // Reset variables
+            map = [];
+            player = { x: 1, y: 1 };
+            target = null;
+            path = [];
 
-    <!-- Dot Base Size Slider Group (only visible in dot mode) -->
-    <div class="slider-group" id="dotSizeGroup" style="display: none;">
-      <div class="slider-label">
-        <label for="dotSizeSlider">Dot Base Size:</label>
-        <input type="number" class="custom-input" id="dotSizeValue" min="0.01" max="1" value="0.03" step="0.01">
-      </div>
-      <input type="range" class="slider" id="dotSizeSlider" min="0.01" max="1" value="0.03" step="0.01">
-    </div>
-  </div>
+            // Generate random map (0 = walkable, 1 = wall)
+            for (let y = 0; y < gridHeight; y++) {
+                map[y] = [];
+                for (let x = 0; x < gridWidth; x++) {
+                    // 30% chance of wall, but keep edges clear for spawning
+                    if (x === 0 || y === 0 || x === gridWidth - 1 || y === gridHeight - 1) {
+                        map[y][x] = 0;
+                    } else {
+                        map[y][x] = Math.random() < 0.3 ? 1 : 0;
+                    }
+                }
+            }
+            draw();
+        }
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <script>
-    // Global Variables
-    let scene, camera, renderer, bubble, controls;
-    let frequency = 440, amplitude = 0.2, detail = 5, cameraDistance = 5;
-    let dotMode = false, dotBaseSize = 0.03;
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Shader Code (conditionally compiles DOTS_MODE)
-    const vertexShaderCode = `
-      uniform float uFrequency;
-      uniform float uAmplitude;
-      #ifdef DOTS_MODE
-      uniform float uDotSize;
-      #endif
-      varying vec3 vNormal;
-      void main() {
-        vec3 pos = position;
-        vec3 norm = normalize(pos);
-        float radial = sin(length(pos) * uFrequency * 0.08);
-        float spherical = sin(dot(pos, vec3(1.0)) * uFrequency * 0.04);
-        float displacement = (radial + spherical) * uAmplitude;
-        pos += norm * displacement;
-        vNormal = normalize(pos);
-        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-        #ifdef DOTS_MODE
-          gl_PointSize = uDotSize * (300.0 / -mvPosition.z);
-        #endif
-      }
-    `;
+            // Draw map
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
+                    ctx.fillStyle = map[y][x] === 1 ? '#666' : '#fff';
+                    ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+                }
+            }
 
-    const fragmentShaderCode = `
-      #ifdef DOTS_MODE
-      varying vec3 vNormal;
-      void main() {
-        vec2 coord = gl_PointCoord - vec2(0.5);
-        if(length(coord) > 0.5) discard;
-        gl_FragColor = vec4(vec3(0.9), 1.0);
-      }
-      #else
-      varying vec3 vNormal;
-      void main() {
-        vec3 lightDir = normalize(vec3(1.0, 2.0, 1.0));
-        float diff = max(dot(vNormal, lightDir), 0.0);
-        float spec = pow(max(dot(reflect(-lightDir, vNormal), vec3(0.0, 0.0, 1.0)), 0.5), 32.0);
-        vec3 color = vec3(0.9) * (diff * 0.7 + 0.3) + spec * 0.5;
-        gl_FragColor = vec4(color, 1.0);
-      }
-      #endif
-    `;
+            // Draw path
+            if (path.length > 0) {
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+                path.forEach(node => {
+                    ctx.fillRect(node.x * tileSize, node.y * tileSize, tileSize, tileSize);
+                });
+            }
 
-    // Generates a BufferGeometry with "count" points distributed evenly on a sphere (radius 2)
-    function createDotGeometry(count) {
-      const positions = new Float32Array(count * 3);
-      const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-      const radius = 2;
-      for (let i = 0; i < count; i++) {
-        const y = 1 - (i / (count - 1)) * 2; // from 1 to -1
-        const r = Math.sqrt(1 - y * y);
-        const theta = goldenAngle * i;
-        const x = Math.cos(theta) * r;
-        const z = Math.sin(theta) * r;
-        positions[i * 3]     = x * radius;
-        positions[i * 3 + 1] = y * radius;
-        positions[i * 3 + 2] = z * radius;
-      }
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      return geometry;
-    }
+            // Draw player
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(player.x * tileSize, player.y * tileSize, tileSize, tileSize);
 
-    function init() {
-      // Setup scene
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      document.body.appendChild(renderer.domElement);
+            // Draw target
+            if (target) {
+                ctx.fillStyle = 'red';
+                ctx.fillRect(target.x * tileSize, target.y * tileSize, tileSize, tileSize);
+            }
+        }
 
-      // Create initial bubble
-      createBubble(detail);
+        // A* Pathfinding
+        function findPath(start, goal) {
+            const openSet = [start];
+            const closedSet = [];
+            const cameFrom = new Map();
+            const gScore = new Map();
+            const fScore = new Map();
 
-      // Position camera
-      camera.position.z = cameraDistance;
+            gScore.set(`${start.x},${start.y}`, 0);
+            fScore.set(`${start.x},${start.y}`, heuristic(start, goal));
 
-      // Lighting
-      const light = new THREE.DirectionalLight(0xffffff, 1);
-      light.position.set(1, 2, 1);
-      scene.add(light);
-      scene.add(new THREE.AmbientLight(0x404040));
+            while (openSet.length > 0) {
+                let current = openSet.reduce((a, b) => 
+                    fScore.get(`${a.x},${a.y}`) < fScore.get(`${b.x},${b.y}`) ? a : b);
 
-      // OrbitControls for intuitive camera dragging
-      controls = new THREE.OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-      controls.dampingFactor = 0.05;
+                if (current.x === goal.x && current.y === goal.y) {
+                    return reconstructPath(cameFrom, current);
+                }
 
-      // Event listeners
-      window.addEventListener('resize', onWindowResize);
+                openSet.splice(openSet.indexOf(current), 1);
+                closedSet.push(current);
 
-      // Frequency Controls
-      const frequencySlider = document.getElementById('frequencySlider');
-      const frequencyValueInput = document.getElementById('frequencyValue');
-      frequencySlider.addEventListener('input', (e) => {
-        frequency = parseFloat(e.target.value);
-        frequencyValueInput.value = frequency;
-      });
-      frequencyValueInput.addEventListener('change', (e) => {
-        frequency = parseFloat(e.target.value);
-        if (frequency < parseFloat(frequencySlider.min)) frequency = parseFloat(frequencySlider.min);
-        if (frequency > parseFloat(frequencySlider.max)) frequency = parseFloat(frequencySlider.max);
-        frequencySlider.value = frequency;
-        frequencyValueInput.value = frequency;
-      });
+                const neighbors = getNeighbors(current);
+                for (let neighbor of neighbors) {
+                    if (closedSet.some(node => node.x === neighbor.x && node.y === neighbor.y)) {
+                        continue;
+                    }
 
-      // Amplitude Controls
-      const amplitudeSlider = document.getElementById('amplitudeSlider');
-      const amplitudeValueInput = document.getElementById('amplitudeValue');
-      amplitudeSlider.addEventListener('input', (e) => {
-        amplitude = parseFloat(e.target.value);
-        amplitudeValueInput.value = amplitude;
-      });
-      amplitudeValueInput.addEventListener('change', (e) => {
-        amplitude = parseFloat(e.target.value);
-        if (amplitude < parseFloat(amplitudeSlider.min)) amplitude = parseFloat(amplitudeSlider.min);
-        if (amplitude > parseFloat(amplitudeSlider.max)) amplitude = parseFloat(amplitudeSlider.max);
-        amplitudeSlider.value = amplitude;
-        amplitudeValueInput.value = amplitude;
-      });
+                    const tentativeGScore = gScore.get(`${current.x},${current.y}`) + 1;
 
-      // Detail Controls
-      const detailSlider = document.getElementById('detailSlider');
-      const detailValueInput = document.getElementById('detailValue');
-      detailSlider.addEventListener('input', (e) => {
-        detail = parseInt(e.target.value);
-        detailValueInput.value = detail;
-        updateBubbleDetail(detail);
-      });
-      detailValueInput.addEventListener('change', (e) => {
-        detail = parseInt(e.target.value);
-        if (detail < parseInt(detailSlider.min)) detail = parseInt(detailSlider.min);
-        if (detail > parseInt(detailSlider.max)) detail = parseInt(detailSlider.max);
-        detailSlider.value = detail;
-        detailValueInput.value = detail;
-        updateBubbleDetail(detail);
-      });
+                    if (!openSet.some(node => node.x === neighbor.x && node.y === neighbor.y)) {
+                        openSet.push(neighbor);
+                    } else if (tentativeGScore >= gScore.get(`${neighbor.x},${neighbor.y}`)) {
+                        continue;
+                    }
 
-      // Camera Distance Controls
-      const cameraSlider = document.getElementById('cameraSlider');
-      const cameraValueInput = document.getElementById('cameraValue');
-      cameraSlider.addEventListener('input', (e) => {
-        cameraDistance = parseFloat(e.target.value);
-        cameraValueInput.value = cameraDistance;
-        camera.position.z = cameraDistance;
-      });
-      cameraValueInput.addEventListener('change', (e) => {
-        cameraDistance = parseFloat(e.target.value);
-        if (cameraDistance < parseFloat(cameraSlider.min)) cameraDistance = parseFloat(cameraSlider.min);
-        if (cameraDistance > parseFloat(cameraSlider.max)) cameraDistance = parseFloat(cameraSlider.max);
-        cameraSlider.value = cameraDistance;
-        cameraValueInput.value = cameraDistance;
-        camera.position.z = cameraDistance;
-      });
+                    cameFrom.set(`${neighbor.x},${neighbor.y}`, current);
+                    gScore.set(`${neighbor.x},${neighbor.y}`, tentativeGScore);
+                    fScore.set(`${neighbor.x},${neighbor.y}`, tentativeGScore + heuristic(neighbor, goal));
+                }
+            }
+            return []; // No path found
+        }
 
-      // Mode Toggle Controls
-      const modeToggle = document.getElementById('modeToggle');
-      modeToggle.addEventListener('change', (e) => {
-        dotMode = e.target.checked;
-        // Show/hide dot size slider group
-        document.getElementById('dotSizeGroup').style.display = dotMode ? 'flex' : 'none';
-        recreateBubble();
-      });
+        function heuristic(a, b) {
+            return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); // Manhattan distance
+        }
 
-      // Dot Base Size Controls (only active in dot mode)
-      const dotSizeSlider = document.getElementById('dotSizeSlider');
-      const dotSizeValueInput = document.getElementById('dotSizeValue');
-      dotSizeSlider.addEventListener('input', (e) => {
-        dotBaseSize = parseFloat(e.target.value);
-        dotSizeValueInput.value = dotBaseSize;
-        if (dotMode && bubble && bubble.material.uniforms.uDotSize)
-          bubble.material.uniforms.uDotSize.value = dotBaseSize;
-      });
-      dotSizeValueInput.addEventListener('change', (e) => {
-        dotBaseSize = parseFloat(e.target.value);
-        if (dotBaseSize < parseFloat(dotSizeSlider.min)) dotBaseSize = parseFloat(dotSizeSlider.min);
-        if (dotBaseSize > parseFloat(dotSizeSlider.max)) dotBaseSize = parseFloat(dotSizeSlider.max);
-        dotSizeSlider.value = dotBaseSize;
-        dotSizeValueInput.value = dotBaseSize;
-        if (dotMode && bubble && bubble.material.uniforms.uDotSize)
-          bubble.material.uniforms.uDotSize.value = dotBaseSize;
-      });
+        function getNeighbors(node) {
+            const neighbors = [];
+            const directions = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+            for (let [dx, dy] of directions) {
+                const newX = node.x + dx;
+                const newY = node.y + dy;
+                if (newX >= 0 && newX < gridWidth && newY >= 0 && newY < gridHeight && map[newY][newX] === 0) {
+                    neighbors.push({ x: newX, y: newY });
+                }
+            }
+            return neighbors;
+        }
 
-      animate();
-    }
+        function reconstructPath(cameFrom, current) {
+            const path = [current];
+            while (cameFrom.has(`${current.x},${current.y}`)) {
+                current = cameFrom.get(`${current.x},${current.y}`);
+                path.unshift(current);
+            }
+            return path;
+        }
 
-    // Creates the bubble based on current mode and detail.
-    // In dot mode the "detail" number represents the total number of dots.
-    function createBubble(detailLevel) {
-      let geometry, material;
-      if (dotMode) {
-        geometry = createDotGeometry(detailLevel);
-        material = new THREE.ShaderMaterial({
-          defines: { DOTS_MODE: '' },
-          uniforms: {
-            uFrequency: { value: frequency },
-            uAmplitude: { value: amplitude },
-            uDotSize: { value: dotBaseSize }
-          },
-          vertexShader: vertexShaderCode,
-          fragmentShader: fragmentShaderCode,
-          transparent: true
+        // Handle click/tap
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / tileSize);
+            const y = Math.floor((e.clientY - rect.top) / tileSize);
+
+            if (map[y][x] === 0) { // Only move to walkable tiles
+                target = { x, y };
+                path = findPath(player, target);
+                if (path.length > 0) {
+                    moveAlongPath();
+                }
+            }
         });
-        bubble = new THREE.Points(geometry, material);
-      } else {
-        geometry = new THREE.IcosahedronGeometry(2, detailLevel);
-        material = new THREE.ShaderMaterial({
-          uniforms: {
-            uFrequency: { value: frequency },
-            uAmplitude: { value: amplitude }
-          },
-          vertexShader: vertexShaderCode,
-          fragmentShader: fragmentShaderCode,
-          wireframe: true
-        });
-        bubble = new THREE.Mesh(geometry, material);
-      }
-      scene.add(bubble);
-    }
 
-    // Recreates the bubble when switching modes
-    function recreateBubble() {
-      if (bubble) {
-        scene.remove(bubble);
-        bubble.geometry.dispose();
-        bubble.material.dispose();
-      }
-      createBubble(detail);
-    }
+        function moveAlongPath() {
+            if (path.length > 0) {
+                player = path.shift();
+                draw();
+                setTimeout(moveAlongPath, 100); // Move every 100ms
+            }
+        }
 
-    // Updates the bubble's detail by replacing its geometry.
-    // In dot mode, detail now represents the number of dots.
-    function updateBubbleDetail(detailLevel) {
-      if (!bubble) return;
-      let newGeometry;
-      if (dotMode) {
-        newGeometry = createDotGeometry(detailLevel);
-      } else {
-        newGeometry = new THREE.IcosahedronGeometry(2, detailLevel);
-      }
-      bubble.geometry.dispose();
-      bubble.geometry = newGeometry;
-    }
-
-    function onWindowResize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-
-    function animate() {
-      requestAnimationFrame(animate);
-      // Update uniforms continuously
-      if (bubble.material.uniforms.uFrequency) bubble.material.uniforms.uFrequency.value = frequency;
-      if (bubble.material.uniforms.uAmplitude) bubble.material.uniforms.uAmplitude.value = amplitude;
-      if (dotMode && bubble.material.uniforms.uDotSize) bubble.material.uniforms.uDotSize.value = dotBaseSize;
-      bubble.rotation.x += 0.002;
-      bubble.rotation.y += 0.003;
-      controls.update();
-      renderer.render(scene, camera);
-    }
-
-    init();
-  </script>
+        draw();
+    </script>
 </body>
 </html>

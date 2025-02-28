@@ -34,7 +34,6 @@
         let target = null;
         let path = [];
 
-        // Generate initial map
         generateNewMap();
 
         function generateNewMap() {
@@ -43,7 +42,6 @@
             target = null;
             path = [];
 
-            // Generate random curved polygons
             for (let i = 0; i < 8; i++) {
                 const centerX = Math.random() * width;
                 const centerY = Math.random() * height;
@@ -61,13 +59,17 @@
                 }
                 obstacles.push(points);
             }
+            // Ensure player start position is valid
+            while (!isPointValid(player)) {
+                player.x = Math.random() * width;
+                player.y = Math.random() * height;
+            }
             draw();
         }
 
         function draw() {
             ctx.clearRect(0, 0, width, height);
 
-            // Draw obstacles
             ctx.fillStyle = '#666';
             obstacles.forEach(polygon => {
                 ctx.beginPath();
@@ -79,7 +81,6 @@
                 ctx.fill();
             });
 
-            // Draw path
             if (path.length > 0) {
                 ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
                 ctx.lineWidth = 2;
@@ -91,13 +92,11 @@
                 ctx.stroke();
             }
 
-            // Draw player
             ctx.fillStyle = 'blue';
             ctx.beginPath();
             ctx.arc(player.x, player.y, 10, 0, Math.PI * 2);
             ctx.fill();
 
-            // Draw target
             if (target) {
                 ctx.fillStyle = 'red';
                 ctx.beginPath();
@@ -106,7 +105,6 @@
             }
         }
 
-        // Simple point-in-polygon test
         function isPointInPolygon(point, polygon) {
             let inside = false;
             for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -121,28 +119,25 @@
         }
 
         function isPointValid(point) {
-            return point.x >= 0 && point.x <= width && 
-                   point.y >= 0 && point.y <= height &&
+            return point.x >= 10 && point.x <= width - 10 && 
+                   point.y >= 10 && point.y <= height - 10 &&
                    !obstacles.some(polygon => isPointInPolygon(point, polygon));
         }
 
-        // Smooth pathfinding using visibility graph and path smoothing
         function findSmoothPath(start, end) {
             if (!isPointValid(end)) return [];
 
-            // Simple path with waypoints around obstacles
             let waypoints = [start];
             let current = { x: start.x, y: start.y };
             const maxSteps = 100;
             let step = 0;
 
-            while (distance(current, end) > 10 && step < maxSteps) {
+            while (distance(current, end) > 15 && step < maxSteps) {
                 step++;
                 let directPathBlocked = false;
                 let closestCollision = null;
                 let minDist = Infinity;
 
-                // Check for collisions with obstacles
                 obstacles.forEach(polygon => {
                     for (let i = 0; i < polygon.length; i++) {
                         const p1 = polygon[i];
@@ -163,36 +158,48 @@
                     waypoints.push(end);
                     break;
                 } else {
-                    // Move around obstacle
-                    const offset = 20;
+                    const offset = 30; // Increased offset to avoid getting stuck
                     const direction = normalize({
                         x: end.x - current.x,
                         y: end.y - current.y
                     });
                     const perpendicular = { x: -direction.y, y: direction.x };
-                    const detour = {
+                    
+                    // Try both directions to avoid getting stuck
+                    let detour = {
                         x: closestCollision.x + perpendicular.x * offset,
                         y: closestCollision.y + perpendicular.y * offset
                     };
+                    let detourValid = isPointValid(detour);
                     
-                    if (isPointValid(detour)) {
+                    if (!detourValid) {
+                        detour = {
+                            x: closestCollision.x - perpendicular.x * offset,
+                            y: closestCollision.y - perpendicular.y * offset
+                        };
+                        detourValid = isPointValid(detour);
+                    }
+
+                    if (detourValid) {
                         waypoints.push(detour);
                         current = detour;
                     } else {
-                        // Try opposite direction
-                        detour.x = closestCollision.x - perpendicular.x * offset;
-                        detour.y = closestCollision.y - perpendicular.y * offset;
-                        if (isPointValid(detour)) {
-                            waypoints.push(detour);
-                            current = detour;
+                        // Fallback: try smaller steps along the edge
+                        const stepSize = 15;
+                        const newPoint = {
+                            x: current.x + direction.x * stepSize,
+                            y: current.y + direction.y * stepSize
+                        };
+                        if (isPointValid(newPoint)) {
+                            waypoints.push(newPoint);
+                            current = newPoint;
                         } else {
-                            break; // Can't find valid path
+                            break; // Give up if we can't find a valid path
                         }
                     }
                 }
             }
 
-            // Smooth the path
             return smoothPath(waypoints);
         }
 
@@ -209,7 +216,11 @@
                     x: (prev.x + curr.x + next.x) / 3,
                     y: (prev.y + curr.y + next.y) / 3
                 };
-                smoothed.push(smoothedPoint);
+                if (isPointValid(smoothedPoint)) {
+                    smoothed.push(smoothedPoint);
+                } else {
+                    smoothed.push(curr); // Keep original point if smoothing invalidates it
+                }
             }
             smoothed.push(points[points.length - 1]);
             return smoothed;
@@ -221,7 +232,7 @@
 
         function normalize(vector) {
             const length = Math.sqrt(vector.x ** 2 + vector.y ** 2);
-            return { x: vector.x / length, y: vector.y / length };
+            return length > 0 ? { x: vector.x / length, y: vector.y / length } : vector;
         }
 
         function lineIntersection(p1, p2, p3, p4) {
@@ -231,7 +242,7 @@
             const t = ((p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x)) / denom;
             const u = -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x)) / denom;
 
-            if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+            if (t > 0 && t < 1 && u > 0 && u < 1) {
                 return {
                     x: p1.x + t * (p2.x - p1.x),
                     y: p1.y + t * (p2.y - p1.y)
@@ -240,7 +251,6 @@
             return null;
         }
 
-        // Handle click/tap
         canvas.addEventListener('click', (e) => {
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
@@ -255,10 +265,23 @@
 
         function moveAlongPath() {
             if (path.length > 0) {
-                player = path.shift();
+                const next = path[0];
+                const speed = 2; // Pixels per frame
+                const dx = next.x - player.x;
+                const dy = next.y - player.y;
+                const dist = distance(player, next);
+
+                if (dist <= speed) {
+                    player = path.shift();
+                } else {
+                    const moveDist = normalize({ x: dx, y: dy });
+                    player.x += moveDist.x * speed;
+                    player.y += moveDist.y * speed;
+                }
+
                 draw();
-                if (path.length > 0) {
-                    setTimeout(moveAlongPath, 50); // Smoother movement
+                if (path.length > 0 || dist > speed) {
+                    setTimeout(moveAlongPath, 50); // Slower update rate (20fps)
                 }
             }
         }

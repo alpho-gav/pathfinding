@@ -1,50 +1,98 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Smooth Polygon Map with AI Pathfinding</title>
+    <title>Infinite Polygon Map</title>
     <style>
-        canvas {
-            border: 1px solid black;
-        }
         body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
             display: flex;
-            flex-direction: column;
+            justify-content: center;
             align-items: center;
-            margin: 20px;
+            height: 100vh;
+            touch-action: none; /* Prevent default touch behaviors */
         }
-        button {
-            margin: 10px;
+        canvas {
+            background: black;
+        }
+        #generateBtn {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
             padding: 10px 20px;
             font-size: 16px;
+            z-index: 10;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #generateBtn:hover {
+            background: #555;
         }
     </style>
 </head>
 <body>
-    <button onclick="generateNewMap()">Generate New Map</button>
-    <canvas id="gameCanvas" width="600" height="600"></canvas>
+    <button id="generateBtn" onclick="generateNewMap()">New Map</button>
+    <canvas id="gameCanvas"></canvas>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        
+        // Set canvas to full screen
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
         const width = canvas.width;
         const height = canvas.height;
 
+        // Game state
         let obstacles = [];
-        let player = { x: 50, y: 50 };
+        let player = { x: 0, y: 0 }; // World coordinates (center screen)
+        let screenOffset = { x: width / 2, y: height / 2 };
         let target = null;
         let path = [];
+        const chunkSize = 1000; // Size of each map chunk
 
         generateNewMap();
 
         function generateNewMap() {
             obstacles = [];
-            player = { x: 50, y: 50 };
+            player = { x: 0, y: 0 };
             target = null;
             path = [];
+            generateObstaclesAround(player.x, player.y);
+        }
 
-            for (let i = 0; i < 8; i++) {
-                const centerX = Math.random() * width;
-                const centerY = Math.random() * height;
+        function generateObstaclesAround(centerX, centerY) {
+            const chunkX = Math.floor(centerX / chunkSize);
+            const chunkY = Math.floor(centerY / chunkSize);
+            
+            // Generate obstacles for visible chunks
+            for (let cy = chunkY - 1; cy <= chunkY + 1; cy++) {
+                for (let cx = chunkX - 1; cx <= chunkX + 1; cx++) {
+                    const chunkKey = `${cx},${cy}`;
+                    if (!obstacles.some(obs => obs.chunk === chunkKey)) {
+                        generateChunk(cx, cy);
+                    }
+                }
+            }
+        }
+
+        function generateChunk(chunkX, chunkY) {
+            const seed = chunkX * 1000 + chunkY; // Simple deterministic seed
+            const baseX = chunkX * chunkSize;
+            const baseY = chunkY * chunkSize;
+
+            // Generate 4-6 obstacles per chunk
+            const numObstacles = 4 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < numObstacles; i++) {
+                const centerX = baseX + Math.random() * chunkSize;
+                const centerY = baseY + Math.random() * chunkSize;
                 const points = [];
                 const numPoints = 5 + Math.floor(Math.random() * 4);
                 const radius = 50 + Math.random() * 100;
@@ -57,59 +105,62 @@
                         y: centerY + Math.sin(angle) * (radius + variation)
                     });
                 }
-                obstacles.push(points);
+                obstacles.push({ points, chunk: `${chunkX},${chunkY}` });
             }
-            // Ensure player start position is valid
-            while (!isPointValid(player)) {
-                player.x = Math.random() * width;
-                player.y = Math.random() * height;
-            }
-            draw();
         }
 
         function draw() {
             ctx.clearRect(0, 0, width, height);
 
-            ctx.fillStyle = '#666';
+            // Center player on screen
+            screenOffset.x = width / 2 - player.x;
+            screenOffset.y = height / 2 - player.y;
+
+            // Draw obstacles
+            ctx.fillStyle = 'white';
             obstacles.forEach(polygon => {
                 ctx.beginPath();
-                ctx.moveTo(polygon[0].x, polygon[0].y);
-                for (let i = 1; i < polygon.length; i++) {
-                    ctx.lineTo(polygon[i].x, polygon[i].y);
+                ctx.moveTo(polygon.points[0].x + screenOffset.x, polygon.points[0].y + screenOffset.y);
+                for (let i = 1; i < polygon.points.length; i++) {
+                    ctx.lineTo(polygon.points[i].x + screenOffset.x, polygon.points[i].y + screenOffset.y);
                 }
                 ctx.closePath();
                 ctx.fill();
             });
 
+            // Draw path
             if (path.length > 0) {
-                ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
-                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'blue';
+                ctx.lineWidth = 4;
                 ctx.beginPath();
-                ctx.moveTo(path[0].x, path[0].y);
+                ctx.moveTo(path[0].x + screenOffset.x, path[0].y + screenOffset.y);
                 for (let i = 1; i < path.length; i++) {
-                    ctx.lineTo(path[i].x, path[i].y);
+                    ctx.lineTo(path[i].x + screenOffset.x, path[i].y + screenOffset.y);
                 }
                 ctx.stroke();
             }
 
-            ctx.fillStyle = 'blue';
+            // Draw player (always center screen)
+            ctx.fillStyle = 'grey';
             ctx.beginPath();
-            ctx.arc(player.x, player.y, 10, 0, Math.PI * 2);
+            ctx.arc(width / 2, height / 2, 10, 0, Math.PI * 2);
             ctx.fill();
 
+            // Draw target
             if (target) {
                 ctx.fillStyle = 'red';
                 ctx.beginPath();
-                ctx.arc(target.x, target.y, 8, 0, Math.PI * 2);
+                ctx.arc(target.x + screenOffset.x, target.y + screenOffset.y, 8, 0, Math.PI * 2);
                 ctx.fill();
             }
         }
 
         function isPointInPolygon(point, polygon) {
             let inside = false;
-            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-                const xi = polygon[i].x, yi = polygon[i].y;
-                const xj = polygon[j].x, yj = polygon[j].y;
+            const points = polygon.points;
+            for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+                const xi = points[i].x, yi = points[i].y;
+                const xj = points[j].x, yj = points[j].y;
                 
                 const intersect = ((yi > point.y) !== (yj > point.y))
                     && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
@@ -119,9 +170,8 @@
         }
 
         function isPointValid(point) {
-            return point.x >= 10 && point.x <= width - 10 && 
-                   point.y >= 10 && point.y <= height - 10 &&
-                   !obstacles.some(polygon => isPointInPolygon(point, polygon));
+            generateObstaclesAround(point.x, point.y);
+            return !obstacles.some(polygon => isPointInPolygon(point, polygon));
         }
 
         function findSmoothPath(start, end) {
@@ -129,7 +179,7 @@
 
             let waypoints = [start];
             let current = { x: start.x, y: start.y };
-            const maxSteps = 100;
+            const maxSteps = 200; // Increased for complex paths
             let step = 0;
 
             while (distance(current, end) > 15 && step < maxSteps) {
@@ -139,9 +189,9 @@
                 let minDist = Infinity;
 
                 obstacles.forEach(polygon => {
-                    for (let i = 0; i < polygon.length; i++) {
-                        const p1 = polygon[i];
-                        const p2 = polygon[(i + 1) % polygon.length];
+                    for (let i = 0; i < polygon.points.length; i++) {
+                        const p1 = polygon.points[i];
+                        const p2 = polygon.points[(i + 1) % polygon.points.length];
                         const intersection = lineIntersection(current, end, p1, p2);
                         if (intersection) {
                             const d = distance(current, intersection);
@@ -158,34 +208,29 @@
                     waypoints.push(end);
                     break;
                 } else {
-                    const offset = 30; // Increased offset to avoid getting stuck
-                    const direction = normalize({
-                        x: end.x - current.x,
-                        y: end.y - current.y
-                    });
+                    const offset = 40; // Increased for better obstacle avoidance
+                    const direction = normalize({ x: end.x - current.x, y: end.y - current.y });
                     const perpendicular = { x: -direction.y, y: direction.x };
                     
-                    // Try both directions to avoid getting stuck
-                    let detour = {
-                        x: closestCollision.x + perpendicular.x * offset,
-                        y: closestCollision.y + perpendicular.y * offset
-                    };
-                    let detourValid = isPointValid(detour);
-                    
-                    if (!detourValid) {
-                        detour = {
-                            x: closestCollision.x - perpendicular.x * offset,
-                            y: closestCollision.y - perpendicular.y * offset
-                        };
-                        detourValid = isPointValid(detour);
+                    let detourOptions = [
+                        { x: closestCollision.x + perpendicular.x * offset, y: closestCollision.y + perpendicular.y * offset },
+                        { x: closestCollision.x - perpendicular.x * offset, y: closestCollision.y - perpendicular.y * offset }
+                    ];
+
+                    let validDetour = null;
+                    for (let detour of detourOptions) {
+                        if (isPointValid(detour)) {
+                            validDetour = detour;
+                            break;
+                        }
                     }
 
-                    if (detourValid) {
-                        waypoints.push(detour);
-                        current = detour;
+                    if (validDetour) {
+                        waypoints.push(validDetour);
+                        current = validDetour;
                     } else {
-                        // Fallback: try smaller steps along the edge
-                        const stepSize = 15;
+                        // Try smaller steps along obstacle edge
+                        const stepSize = 20;
                         const newPoint = {
                             x: current.x + direction.x * stepSize,
                             y: current.y + direction.y * stepSize
@@ -194,7 +239,26 @@
                             waypoints.push(newPoint);
                             current = newPoint;
                         } else {
-                            break; // Give up if we can't find a valid path
+                            // Try vertex following
+                            let nearestVertex = null;
+                            let minVertexDist = Infinity;
+                            obstacles.forEach(polygon => {
+                                polygon.points.forEach(v => {
+                                    if (isPointValid(v)) {
+                                        const d = distance(current, v);
+                                        if (d < minVertexDist) {
+                                            minVertexDist = d;
+                                            nearestVertex = v;
+                                        }
+                                    }
+                                });
+                            });
+                            if (nearestVertex) {
+                                waypoints.push(nearestVertex);
+                                current = nearestVertex;
+                            } else {
+                                break;
+                            }
                         }
                     }
                 }
@@ -219,7 +283,7 @@
                 if (isPointValid(smoothedPoint)) {
                     smoothed.push(smoothedPoint);
                 } else {
-                    smoothed.push(curr); // Keep original point if smoothing invalidates it
+                    smoothed.push(curr);
                 }
             }
             smoothed.push(points[points.length - 1]);
@@ -251,40 +315,61 @@
             return null;
         }
 
-        canvas.addEventListener('click', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-
-            target = { x, y };
+        // Unified input handler for both mouse and touch
+        function handleInput(x, y) {
+            target = {
+                x: x - screenOffset.x,
+                y: y - screenOffset.y
+            };
             path = findSmoothPath(player, target);
             if (path.length > 0) {
                 moveAlongPath();
             }
+        }
+
+        // Mouse input
+        canvas.addEventListener('click', (e) => {
+            handleInput(e.clientX, e.clientY);
         });
+
+        // Touch input for mobile
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleInput(touch.clientX, touch.clientY);
+        }, { passive: false });
 
         function moveAlongPath() {
             if (path.length > 0) {
                 const next = path[0];
-                const speed = 2; // Pixels per frame
+                const speed = 1; // Slower speed for clearer visualization
                 const dx = next.x - player.x;
                 const dy = next.y - player.y;
                 const dist = distance(player, next);
 
                 if (dist <= speed) {
                     player = path.shift();
+                    generateObstaclesAround(player.x, player.y); // Generate new chunks as we move
                 } else {
                     const moveDist = normalize({ x: dx, y: dy });
                     player.x += moveDist.x * speed;
                     player.y += moveDist.y * speed;
+                    generateObstaclesAround(player.x, player.y);
                 }
 
                 draw();
                 if (path.length > 0 || dist > speed) {
-                    setTimeout(moveAlongPath, 50); // Slower update rate (20fps)
+                    setTimeout(moveAlongPath, 50); // 20fps for smooth but visible movement
                 }
             }
         }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            draw();
+        });
 
         draw();
     </script>

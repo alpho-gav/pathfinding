@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Random Map with AI Pathfinding</title>
+    <title>Smooth Polygon Map with AI Pathfinding</title>
     <style>
         canvas {
             border: 1px solid black;
@@ -26,12 +26,11 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        const tileSize = 30;
-        const gridWidth = canvas.width / tileSize;
-        const gridHeight = canvas.height / tileSize;
+        const width = canvas.width;
+        const height = canvas.height;
 
-        let map = [];
-        let player = { x: 1, y: 1 };
+        let obstacles = [];
+        let player = { x: 50, y: 50 };
         let target = null;
         let path = [];
 
@@ -39,139 +38,218 @@
         generateNewMap();
 
         function generateNewMap() {
-            // Reset variables
-            map = [];
-            player = { x: 1, y: 1 };
+            obstacles = [];
+            player = { x: 50, y: 50 };
             target = null;
             path = [];
 
-            // Generate random map (0 = walkable, 1 = wall)
-            for (let y = 0; y < gridHeight; y++) {
-                map[y] = [];
-                for (let x = 0; x < gridWidth; x++) {
-                    // 30% chance of wall, but keep edges clear for spawning
-                    if (x === 0 || y === 0 || x === gridWidth - 1 || y === gridHeight - 1) {
-                        map[y][x] = 0;
-                    } else {
-                        map[y][x] = Math.random() < 0.3 ? 1 : 0;
-                    }
+            // Generate random curved polygons
+            for (let i = 0; i < 8; i++) {
+                const centerX = Math.random() * width;
+                const centerY = Math.random() * height;
+                const points = [];
+                const numPoints = 5 + Math.floor(Math.random() * 4);
+                const radius = 50 + Math.random() * 100;
+
+                for (let j = 0; j < numPoints; j++) {
+                    const angle = (j / numPoints) * Math.PI * 2;
+                    const variation = (Math.random() - 0.5) * 30;
+                    points.push({
+                        x: centerX + Math.cos(angle) * (radius + variation),
+                        y: centerY + Math.sin(angle) * (radius + variation)
+                    });
                 }
+                obstacles.push(points);
             }
             draw();
         }
 
         function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, width, height);
 
-            // Draw map
-            for (let y = 0; y < gridHeight; y++) {
-                for (let x = 0; x < gridWidth; x++) {
-                    ctx.fillStyle = map[y][x] === 1 ? '#666' : '#fff';
-                    ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+            // Draw obstacles
+            ctx.fillStyle = '#666';
+            obstacles.forEach(polygon => {
+                ctx.beginPath();
+                ctx.moveTo(polygon[0].x, polygon[0].y);
+                for (let i = 1; i < polygon.length; i++) {
+                    ctx.lineTo(polygon[i].x, polygon[i].y);
                 }
-            }
+                ctx.closePath();
+                ctx.fill();
+            });
 
             // Draw path
             if (path.length > 0) {
-                ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
-                path.forEach(node => {
-                    ctx.fillRect(node.x * tileSize, node.y * tileSize, tileSize, tileSize);
-                });
+                ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(path[0].x, path[0].y);
+                for (let i = 1; i < path.length; i++) {
+                    ctx.lineTo(path[i].x, path[i].y);
+                }
+                ctx.stroke();
             }
 
             // Draw player
             ctx.fillStyle = 'blue';
-            ctx.fillRect(player.x * tileSize, player.y * tileSize, tileSize, tileSize);
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, 10, 0, Math.PI * 2);
+            ctx.fill();
 
             // Draw target
             if (target) {
                 ctx.fillStyle = 'red';
-                ctx.fillRect(target.x * tileSize, target.y * tileSize, tileSize, tileSize);
+                ctx.beginPath();
+                ctx.arc(target.x, target.y, 8, 0, Math.PI * 2);
+                ctx.fill();
             }
         }
 
-        // A* Pathfinding
-        function findPath(start, goal) {
-            const openSet = [start];
-            const closedSet = [];
-            const cameFrom = new Map();
-            const gScore = new Map();
-            const fScore = new Map();
+        // Simple point-in-polygon test
+        function isPointInPolygon(point, polygon) {
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].x, yi = polygon[i].y;
+                const xj = polygon[j].x, yj = polygon[j].y;
+                
+                const intersect = ((yi > point.y) !== (yj > point.y))
+                    && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
 
-            gScore.set(`${start.x},${start.y}`, 0);
-            fScore.set(`${start.x},${start.y}`, heuristic(start, goal));
+        function isPointValid(point) {
+            return point.x >= 0 && point.x <= width && 
+                   point.y >= 0 && point.y <= height &&
+                   !obstacles.some(polygon => isPointInPolygon(point, polygon));
+        }
 
-            while (openSet.length > 0) {
-                let current = openSet.reduce((a, b) => 
-                    fScore.get(`${a.x},${a.y}`) < fScore.get(`${b.x},${b.y}`) ? a : b);
+        // Smooth pathfinding using visibility graph and path smoothing
+        function findSmoothPath(start, end) {
+            if (!isPointValid(end)) return [];
 
-                if (current.x === goal.x && current.y === goal.y) {
-                    return reconstructPath(cameFrom, current);
-                }
+            // Simple path with waypoints around obstacles
+            let waypoints = [start];
+            let current = { x: start.x, y: start.y };
+            const maxSteps = 100;
+            let step = 0;
 
-                openSet.splice(openSet.indexOf(current), 1);
-                closedSet.push(current);
+            while (distance(current, end) > 10 && step < maxSteps) {
+                step++;
+                let directPathBlocked = false;
+                let closestCollision = null;
+                let minDist = Infinity;
 
-                const neighbors = getNeighbors(current);
-                for (let neighbor of neighbors) {
-                    if (closedSet.some(node => node.x === neighbor.x && node.y === neighbor.y)) {
-                        continue;
+                // Check for collisions with obstacles
+                obstacles.forEach(polygon => {
+                    for (let i = 0; i < polygon.length; i++) {
+                        const p1 = polygon[i];
+                        const p2 = polygon[(i + 1) % polygon.length];
+                        const intersection = lineIntersection(current, end, p1, p2);
+                        if (intersection) {
+                            const d = distance(current, intersection);
+                            if (d < minDist) {
+                                minDist = d;
+                                closestCollision = intersection;
+                                directPathBlocked = true;
+                            }
+                        }
                     }
+                });
 
-                    const tentativeGScore = gScore.get(`${current.x},${current.y}`) + 1;
-
-                    if (!openSet.some(node => node.x === neighbor.x && node.y === neighbor.y)) {
-                        openSet.push(neighbor);
-                    } else if (tentativeGScore >= gScore.get(`${neighbor.x},${neighbor.y}`)) {
-                        continue;
+                if (!directPathBlocked) {
+                    waypoints.push(end);
+                    break;
+                } else {
+                    // Move around obstacle
+                    const offset = 20;
+                    const direction = normalize({
+                        x: end.x - current.x,
+                        y: end.y - current.y
+                    });
+                    const perpendicular = { x: -direction.y, y: direction.x };
+                    const detour = {
+                        x: closestCollision.x + perpendicular.x * offset,
+                        y: closestCollision.y + perpendicular.y * offset
+                    };
+                    
+                    if (isPointValid(detour)) {
+                        waypoints.push(detour);
+                        current = detour;
+                    } else {
+                        // Try opposite direction
+                        detour.x = closestCollision.x - perpendicular.x * offset;
+                        detour.y = closestCollision.y - perpendicular.y * offset;
+                        if (isPointValid(detour)) {
+                            waypoints.push(detour);
+                            current = detour;
+                        } else {
+                            break; // Can't find valid path
+                        }
                     }
-
-                    cameFrom.set(`${neighbor.x},${neighbor.y}`, current);
-                    gScore.set(`${neighbor.x},${neighbor.y}`, tentativeGScore);
-                    fScore.set(`${neighbor.x},${neighbor.y}`, tentativeGScore + heuristic(neighbor, goal));
                 }
             }
-            return []; // No path found
+
+            // Smooth the path
+            return smoothPath(waypoints);
         }
 
-        function heuristic(a, b) {
-            return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); // Manhattan distance
-        }
-
-        function getNeighbors(node) {
-            const neighbors = [];
-            const directions = [[0, 1], [1, 0], [0, -1], [-1, 0]];
-            for (let [dx, dy] of directions) {
-                const newX = node.x + dx;
-                const newY = node.y + dy;
-                if (newX >= 0 && newX < gridWidth && newY >= 0 && newY < gridHeight && map[newY][newX] === 0) {
-                    neighbors.push({ x: newX, y: newY });
-                }
+        function smoothPath(points) {
+            if (points.length < 3) return points;
+            
+            const smoothed = [points[0]];
+            for (let i = 1; i < points.length - 1; i++) {
+                const prev = points[i - 1];
+                const curr = points[i];
+                const next = points[i + 1];
+                
+                const smoothedPoint = {
+                    x: (prev.x + curr.x + next.x) / 3,
+                    y: (prev.y + curr.y + next.y) / 3
+                };
+                smoothed.push(smoothedPoint);
             }
-            return neighbors;
+            smoothed.push(points[points.length - 1]);
+            return smoothed;
         }
 
-        function reconstructPath(cameFrom, current) {
-            const path = [current];
-            while (cameFrom.has(`${current.x},${current.y}`)) {
-                current = cameFrom.get(`${current.x},${current.y}`);
-                path.unshift(current);
+        function distance(p1, p2) {
+            return Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+        }
+
+        function normalize(vector) {
+            const length = Math.sqrt(vector.x ** 2 + vector.y ** 2);
+            return { x: vector.x / length, y: vector.y / length };
+        }
+
+        function lineIntersection(p1, p2, p3, p4) {
+            const denom = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
+            if (denom === 0) return null;
+
+            const t = ((p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x)) / denom;
+            const u = -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x)) / denom;
+
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                return {
+                    x: p1.x + t * (p2.x - p1.x),
+                    y: p1.y + t * (p2.y - p1.y)
+                };
             }
-            return path;
+            return null;
         }
 
         // Handle click/tap
         canvas.addEventListener('click', (e) => {
             const rect = canvas.getBoundingClientRect();
-            const x = Math.floor((e.clientX - rect.left) / tileSize);
-            const y = Math.floor((e.clientY - rect.top) / tileSize);
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
 
-            if (map[y][x] === 0) { // Only move to walkable tiles
-                target = { x, y };
-                path = findPath(player, target);
-                if (path.length > 0) {
-                    moveAlongPath();
-                }
+            target = { x, y };
+            path = findSmoothPath(player, target);
+            if (path.length > 0) {
+                moveAlongPath();
             }
         });
 
@@ -179,7 +257,9 @@
             if (path.length > 0) {
                 player = path.shift();
                 draw();
-                setTimeout(moveAlongPath, 100); // Move every 100ms
+                if (path.length > 0) {
+                    setTimeout(moveAlongPath, 50); // Smoother movement
+                }
             }
         }
 
